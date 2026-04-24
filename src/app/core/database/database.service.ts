@@ -13,12 +13,18 @@ export interface NonQueryResult {
   error?: string;
 }
 
+declare const window: Window & typeof globalThis & {
+  electronAPI: {
+    sendMessage: (channel: string, args: any) => Promise<any>;
+  };
+};
+
 @Injectable({
   providedIn: 'root'
 })
 export class DatabaseService {
   // Check if we are running in Electron
-  private isElectron = !!(window && window.process && window.process.type);
+  private isElectron = !!(window && (window as any).process && (window as any).process.type);
 
   constructor() {
     // If not in Electron, we could use a mock service for testing in browser
