@@ -6,10 +6,10 @@
     "start": "ng serve",
     "build": "ng build",
     "watch": "ng build --watch --configuration development",
-    "test": "ng test",
+    "test": "ng test --watch=false",
     "electron": "electron main.js",
     "electron:build": "ng build && electron-builder",
-    "electron:dev": "concurrently \"npm:start\" \"npm:electron\""
+    "electron:dev": "concurrently \"pnpm start\" \"pnpm electron\""
   },
   "private": true,
   "packageManager": "pnpm@10.0.0",

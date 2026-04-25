@@ -15,7 +15,8 @@ export interface NonQueryResult {
 
 declare const window: Window & typeof globalThis & {
   electronAPI: {
-    sendMessage: (channel: string, args: any) => Promise<any>;
+    executeQuery: (sql: string, params?: any) => Promise<any>;
+    executeNonQuery: (sql: string, params?: any) => Promise<any>;
   };
 };
 
@@ -24,35 +25,35 @@ declare const window: Window & typeof globalThis & {
 })
 export class DatabaseService {
   // Check if we are running in Electron
-  private isElectron = !!(window && (window as any).process && (window as any).process.type);
+  private readonly isElectron = typeof window !== 'undefined' && !!window.electronAPI?.executeQuery;
 
   constructor() {
     // If not in Electron, we could use a mock service for testing in browser
     // For now, we assume Electron environment
   }
 
-  async executeQuery(sql: string, params: any[] = []): Promise<QueryResult> {
+  async executeQuery(sql: string, params: any = []): Promise<QueryResult> {
     if (!this.isElectron) {
       return { success: false, error: 'Database service only available in Electron' };
     }
 
     try {
       // Send IPC message to main process
-      const result = await window.electronAPI.sendMessage('db-executeQuery', { sql, params });
+      const result = await window.electronAPI.executeQuery(sql, params);
       return result;
     } catch (error) {
       return { success: false, error: (error as Error).message };
     }
   }
 
-  async executeNonQuery(sql: string, params: any[] = []): Promise<NonQueryResult> {
+  async executeNonQuery(sql: string, params: any = []): Promise<NonQueryResult> {
     if (!this.isElectron) {
       return { success: false, error: 'Database service only available in Electron' };
     }
 
     try {
       // Send IPC message to main process
-      const result = await window.electronAPI.sendMessage('db-executeNonQuery', { sql, params });
+      const result = await window.electronAPI.executeNonQuery(sql, params);
       return result;
     } catch (error) {
       return { success: false, error: (error as Error).message };
