@@ -1,6 +1,6 @@
 import { CommonModule } from '@angular/common';
 import { Component, computed, OnInit, signal } from '@angular/core';
-import { FormBuilder, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
+import { AbstractControl, FormBuilder, FormGroup, ReactiveFormsModule, ValidationErrors, ValidatorFn, Validators } from '@angular/forms';
 
 import { DatabaseService } from './core/database/database.service';
 
@@ -163,6 +163,20 @@ const normalizeText = (value: unknown): string => String(value ?? '').trim();
 
 const normalizeTime = (value: unknown): string => normalizeText(value);
 
+const timeToMinutes = (value: string): number | null => {
+  if (!value) {
+    return null;
+  }
+
+  const [hours, minutes] = value.split(':').map((part) => Number(part));
+
+  if (!Number.isFinite(hours) || !Number.isFinite(minutes)) {
+    return null;
+  }
+
+  return hours * 60 + minutes;
+};
+
 const lookupName = (items: LookupItem[], id: number | null): string => {
   if (id === null) {
     return 'Sin dato';
@@ -271,10 +285,10 @@ export class App implements OnInit {
       fecha: ['', Validators.required],
       inicio: [''],
       fin: [''],
-      motivo: ['', Validators.required],
+      motivo: ['', [Validators.required, Validators.minLength(5)]],
       estadoId: [null as number | null, Validators.required],
-      observaciones: [''],
-    });
+      observaciones: ['', [Validators.maxLength(500)]],
+    }, { validators: [this.timeRangeValidator()] });
   }
 
   async ngOnInit(): Promise<void> {
@@ -311,7 +325,7 @@ export class App implements OnInit {
   protected async saveSolicitud(): Promise<void> {
     if (this.form.invalid) {
       this.form.markAllAsTouched();
-      this.statusMessage.set('Completa los campos obligatorios');
+      this.statusMessage.set(this.formMessage());
       return;
     }
 
@@ -354,6 +368,37 @@ export class App implements OnInit {
 
   protected statusClass(estado: string): string {
     return `status--${estado.toLowerCase()}`;
+  }
+
+  protected hasFieldError(name: string): boolean {
+    const control = this.form.get(name);
+    return !!control && control.touched && control.invalid;
+  }
+
+  protected fieldError(name: string): string {
+    const control = this.form.get(name);
+
+    if (!control || !control.touched || !control.errors) {
+      return '';
+    }
+
+    if (control.errors['required']) {
+      return 'Este campo es obligatorio.';
+    }
+
+    if (control.errors['minlength']) {
+      return 'Debe tener al menos 5 caracteres.';
+    }
+
+    if (control.errors['maxlength']) {
+      return 'Supera el máximo permitido.';
+    }
+
+    return 'Valor inválido.';
+  }
+
+  protected formError(): string {
+    return this.form.errors?.['invalidTimeRange'] ? 'La hora fin debe ser mayor que la hora inicio.' : '';
   }
 
   private async reloadData(preferredId: number | null = this.selectedSolicitudId()): Promise<void> {
@@ -449,16 +494,44 @@ export class App implements OnInit {
   private formValueToRecord(value: SolicitudFormValue): SolicitudDraft {
     return {
       id: value.id,
-      sectorId: value.sectorId ?? 0,
-      oficinaId: value.oficinaId ?? 0,
-      solicitanteId: value.solicitanteId ?? 0,
+      sectorId: toNumber(value.sectorId) ?? 0,
+      oficinaId: toNumber(value.oficinaId) ?? 0,
+      solicitanteId: toNumber(value.solicitanteId) ?? 0,
       fecha: value.fecha,
       inicio: normalizeTime(value.inicio),
       fin: normalizeTime(value.fin),
       motivo: normalizeText(value.motivo),
-      estadoId: value.estadoId ?? 0,
+      estadoId: toNumber(value.estadoId) ?? 0,
       observaciones: normalizeText(value.observaciones),
     };
+  }
+
+  private timeRangeValidator(): ValidatorFn {
+    return (control: AbstractControl): ValidationErrors | null => {
+      const inicio = String(control.get('inicio')?.value ?? '');
+      const fin = String(control.get('fin')?.value ?? '');
+
+      if (!inicio || !fin) {
+        return null;
+      }
+
+      const start = timeToMinutes(inicio);
+      const end = timeToMinutes(fin);
+
+      if (start === null || end === null || end > start) {
+        return null;
+      }
+
+      return { invalidTimeRange: true };
+    };
+  }
+
+  private formMessage(): string {
+    if (this.form.errors?.['invalidTimeRange']) {
+      return 'Revisa la hora inicio y fin.';
+    }
+
+    return 'Completa los campos obligatorios.';
   }
 
   private async createSolicitud(record: SolicitudDraft): Promise<void> {

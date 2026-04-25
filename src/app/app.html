@@ -143,6 +143,7 @@
               <option [ngValue]="null">Seleccione un sector</option>
               <option *ngFor="let item of sectores()" [ngValue]="item.id">{{ item.nombre }}</option>
             </select>
+            <small class="field-error" *ngIf="hasFieldError('sectorId')">{{ fieldError('sectorId') }}</small>
           </label>
 
           <label class="field">
@@ -151,6 +152,7 @@
               <option [ngValue]="null">Seleccione una oficina</option>
               <option *ngFor="let item of oficinas()" [ngValue]="item.id">{{ item.nombre }}</option>
             </select>
+            <small class="field-error" *ngIf="hasFieldError('oficinaId')">{{ fieldError('oficinaId') }}</small>
           </label>
 
           <label class="field">
@@ -159,6 +161,7 @@
               <option [ngValue]="null">Seleccione una persona</option>
               <option *ngFor="let item of personal()" [ngValue]="item.id">{{ item.nombre }}</option>
             </select>
+            <small class="field-error" *ngIf="hasFieldError('solicitanteId')">{{ fieldError('solicitanteId') }}</small>
           </label>
 
           <label class="field">
@@ -167,11 +170,13 @@
               <option [ngValue]="null">Seleccione un estado</option>
               <option *ngFor="let item of estados()" [ngValue]="item.id">{{ item.nombre }}</option>
             </select>
+            <small class="field-error" *ngIf="hasFieldError('estadoId')">{{ fieldError('estadoId') }}</small>
           </label>
 
           <label class="field">
             <span>Fecha *</span>
             <input type="date" formControlName="fecha" />
+            <small class="field-error" *ngIf="hasFieldError('fecha')">{{ fieldError('fecha') }}</small>
           </label>
 
           <label class="field">
@@ -182,16 +187,19 @@
           <label class="field">
             <span>Hora fin</span>
             <input type="time" formControlName="fin" />
+            <small class="field-error" *ngIf="formError()">{{ formError() }}</small>
           </label>
 
           <label class="field field--full">
             <span>Motivo *</span>
             <input type="text" formControlName="motivo" placeholder="Motivo de la solicitud" />
+            <small class="field-error" *ngIf="hasFieldError('motivo')">{{ fieldError('motivo') }}</small>
           </label>
 
           <label class="field field--full">
             <span>Observaciones</span>
             <textarea rows="4" formControlName="observaciones" placeholder="Notas adicionales"></textarea>
+            <small class="field-error" *ngIf="hasFieldError('observaciones')">{{ fieldError('observaciones') }}</small>
           </label>
         </form>
 
