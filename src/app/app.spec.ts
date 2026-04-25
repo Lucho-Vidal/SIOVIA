@@ -20,6 +20,7 @@ describe('App', () => {
     const compiled = fixture.nativeElement as HTMLElement;
     expect(compiled.querySelector('h2')?.textContent).toContain('Solicitudes');
     expect(compiled.textContent).toContain('Nueva solicitud');
+    expect(compiled.textContent).toContain('Autorizaciones');
     expect(compiled.textContent).toContain('Guardar');
   });
 
@@ -41,5 +42,24 @@ describe('App', () => {
 
     expect(app.form.valid).toBeFalsy();
     expect(app.form.errors?.['invalidTimeRange']).toBeTruthy();
+  });
+
+  it('should validate authorization time range', async () => {
+    const fixture = TestBed.createComponent(App);
+    await fixture.whenStable();
+
+    const app = fixture.componentInstance as App & { authorizationForm: any };
+    app.authorizationForm.patchValue({
+      solicitudId: 1042,
+      oficinaId: 1,
+      autorizadorId: 1,
+      fecha: '2026-04-25',
+      inicio: '12:00',
+      fin: '11:00',
+      estadoId: 1,
+    });
+
+    expect(app.authorizationForm.valid).toBeFalsy();
+    expect(app.authorizationForm.errors?.['invalidTimeRange']).toBeTruthy();
   });
 });

@@ -173,6 +173,33 @@ function seedDatabase() {
     },
   ]);
 
+  insertMany('INSERT OR IGNORE INTO Autorizaciones (AutorizacionID, SolicitudID, OficinaID, AutorizadorID, FechaAutorizacion, HoraInicioAutorizada, HoraFinAutorizada, Observaciones, EstadoID, UsuarioCreadorID) VALUES (@AutorizacionID, @SolicitudID, @OficinaID, @AutorizadorID, @FechaAutorizacion, @HoraInicioAutorizada, @HoraFinAutorizada, @Observaciones, @EstadoID, @UsuarioCreadorID)', [
+    {
+      AutorizacionID: 2001,
+      SolicitudID: 1043,
+      OficinaID: 2,
+      AutorizadorID: 1,
+      FechaAutorizacion: '2026-04-25',
+      HoraInicioAutorizada: '10:15',
+      HoraFinAutorizada: '13:00',
+      Observaciones: 'Ventana operativa aprobada.',
+      EstadoID: 2,
+      UsuarioCreadorID: 1,
+    },
+    {
+      AutorizacionID: 2002,
+      SolicitudID: 1042,
+      OficinaID: 1,
+      AutorizadorID: 2,
+      FechaAutorizacion: '2026-04-25',
+      HoraInicioAutorizada: '08:10',
+      HoraFinAutorizada: '11:45',
+      Observaciones: 'Pendiente de confirmación final.',
+      EstadoID: 1,
+      UsuarioCreadorID: 1,
+    },
+  ]);
+
   console.log('Demo data seeded into SQLite');
 }
 

@@ -212,5 +212,130 @@
         <p class="message" *ngIf="statusMessage()">{{ statusMessage() }}</p>
       </article>
     </section>
+
+    <section class="section-heading">
+      <h3>Autorizaciones</h3>
+      <p>Se muestran ligadas a la solicitud activa.</p>
+    </section>
+
+    <section class="content-grid">
+      <article class="panel table-panel">
+        <div class="panel__header">
+          <div>
+            <h3>Historial de autorizaciones</h3>
+            <p>{{ filteredAutorizaciones().length }} autorizaciones visibles</p>
+          </div>
+          <span class="panel__badge">Flujo vinculado</span>
+        </div>
+
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>Solicitud</th>
+                <th>Oficina</th>
+                <th>Autorizador</th>
+                <th>Fecha</th>
+                <th>Estado</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr
+                *ngFor="let autorizacion of filteredAutorizaciones()"
+                (click)="selectAutorizacion(autorizacion.id)"
+                [class.is-selected]="selectedAutorizacionId() === autorizacion.id"
+              >
+                <td>#{{ autorizacion.id }}</td>
+                <td>{{ autorizacion.solicitud }}</td>
+                <td>{{ autorizacion.oficina }}</td>
+                <td>{{ autorizacion.autorizador }}</td>
+                <td>{{ autorizacion.fecha }}</td>
+                <td><span class="status" [ngClass]="statusClass(autorizacion.estado)">{{ autorizacion.estado }}</span></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </article>
+
+      <article class="panel form-panel">
+        <div class="panel__header">
+          <div>
+            <h3>{{ selectedAutorizacion() ? 'Editar autorización' : 'Nueva autorización' }}</h3>
+            <p>Alta, edición y eliminación</p>
+          </div>
+          <span class="panel__badge">{{ totalAutorizaciones() }} total</span>
+        </div>
+
+        <form class="form-grid" [formGroup]="authorizationForm">
+          <label class="field">
+            <span>Solicitud *</span>
+            <select formControlName="solicitudId">
+              <option [ngValue]="null">Seleccione una solicitud</option>
+              <option *ngFor="let item of solicitudes()" [ngValue]="item.id">#{{ item.id }} · {{ item.motivo }}</option>
+            </select>
+            <small class="field-error" *ngIf="hasAuthorizationFieldError('solicitudId')">{{ authorizationFieldError('solicitudId') }}</small>
+          </label>
+
+          <label class="field">
+            <span>Oficina *</span>
+            <select formControlName="oficinaId">
+              <option [ngValue]="null">Seleccione una oficina</option>
+              <option *ngFor="let item of oficinas()" [ngValue]="item.id">{{ item.nombre }}</option>
+            </select>
+            <small class="field-error" *ngIf="hasAuthorizationFieldError('oficinaId')">{{ authorizationFieldError('oficinaId') }}</small>
+          </label>
+
+          <label class="field">
+            <span>Autorizador *</span>
+            <select formControlName="autorizadorId">
+              <option [ngValue]="null">Seleccione una persona</option>
+              <option *ngFor="let item of personal()" [ngValue]="item.id">{{ item.nombre }}</option>
+            </select>
+            <small class="field-error" *ngIf="hasAuthorizationFieldError('autorizadorId')">{{ authorizationFieldError('autorizadorId') }}</small>
+          </label>
+
+          <label class="field">
+            <span>Estado *</span>
+            <select formControlName="estadoId">
+              <option [ngValue]="null">Seleccione un estado</option>
+              <option *ngFor="let item of estadosAutorizacion()" [ngValue]="item.id">{{ item.nombre }}</option>
+            </select>
+            <small class="field-error" *ngIf="hasAuthorizationFieldError('estadoId')">{{ authorizationFieldError('estadoId') }}</small>
+          </label>
+
+          <label class="field">
+            <span>Fecha *</span>
+            <input type="date" formControlName="fecha" />
+            <small class="field-error" *ngIf="hasAuthorizationFieldError('fecha')">{{ authorizationFieldError('fecha') }}</small>
+          </label>
+
+          <label class="field">
+            <span>Hora inicio</span>
+            <input type="time" formControlName="inicio" />
+          </label>
+
+          <label class="field">
+            <span>Hora fin</span>
+            <input type="time" formControlName="fin" />
+            <small class="field-error" *ngIf="authorizationFormError()">{{ authorizationFormError() }}</small>
+          </label>
+
+          <label class="field field--full">
+            <span>Observaciones</span>
+            <textarea rows="4" formControlName="observaciones" placeholder="Notas de la autorización"></textarea>
+            <small class="field-error" *ngIf="hasAuthorizationFieldError('observaciones')">{{ authorizationFieldError('observaciones') }}</small>
+          </label>
+        </form>
+
+        <div class="form-actions">
+          <button type="button" class="secondary-action" (click)="newAutorizacion()">Limpiar</button>
+          <button type="button" class="danger-action" (click)="deleteAutorizacion()" [disabled]="!selectedAutorizacion()">Eliminar</button>
+          <button type="button" class="primary-action" [disabled]="authorizationForm.invalid || isBusy()" (click)="saveAutorizacion()">Guardar</button>
+        </div>
+
+        <p class="message" *ngIf="authorizationFormMessage() && authorizationForm.invalid && authorizationForm.touched">{{ authorizationFormMessage() }}</p>
+      </article>
+    </section>
   </main>
 </div>

@@ -48,6 +48,41 @@ interface SolicitudDraft extends Omit<SolicitudRecord, 'id'> {
   id: number | null;
 }
 
+interface AutorizacionRecord {
+  id: number;
+  solicitudId: number;
+  oficinaId: number;
+  autorizadorId: number;
+  fecha: string;
+  inicio: string;
+  fin: string;
+  observaciones: string;
+  estadoId: number;
+}
+
+interface AutorizacionView extends AutorizacionRecord {
+  solicitud: string;
+  oficina: string;
+  autorizador: string;
+  estado: string;
+}
+
+interface AutorizacionFormValue {
+  id: number | null;
+  solicitudId: number | null;
+  oficinaId: number | null;
+  autorizadorId: number | null;
+  fecha: string;
+  inicio: string;
+  fin: string;
+  observaciones: string;
+  estadoId: number | null;
+}
+
+interface AutorizacionDraft extends Omit<AutorizacionRecord, 'id'> {
+  id: number | null;
+}
+
 const CURRENT_USER_ID = 1;
 
 const DEMO_SECTORES: LookupItem[] = [
@@ -75,6 +110,12 @@ const DEMO_ESTADOS: LookupItem[] = [
   { id: 2, nombre: 'Autorizada' },
   { id: 3, nombre: 'Ejecutada' },
   { id: 4, nombre: 'Observada' },
+];
+
+const DEMO_ESTADOS_AUTORIZACION: LookupItem[] = [
+  { id: 1, nombre: 'Pendiente' },
+  { id: 2, nombre: 'Aprobada' },
+  { id: 3, nombre: 'Rechazada' },
 ];
 
 const DEMO_SOLICITUDES: SolicitudRecord[] = [
@@ -128,6 +169,31 @@ const DEMO_SOLICITUDES: SolicitudRecord[] = [
   },
 ];
 
+const DEMO_AUTORIZACIONES: AutorizacionRecord[] = [
+  {
+    id: 2001,
+    solicitudId: 1043,
+    oficinaId: 2,
+    autorizadorId: 1,
+    fecha: '2026-04-25',
+    inicio: '10:15',
+    fin: '13:00',
+    observaciones: 'Ventana operativa aprobada.',
+    estadoId: 2,
+  },
+  {
+    id: 2002,
+    solicitudId: 1042,
+    oficinaId: 1,
+    autorizadorId: 2,
+    fecha: '2026-04-25',
+    inicio: '08:10',
+    fin: '11:45',
+    observaciones: 'Pendiente de confirmación final.',
+    estadoId: 1,
+  },
+];
+
 const QUERY_SOLICITUDES = `
   SELECT
     s.SolicitudID AS id,
@@ -148,6 +214,21 @@ const QUERY_SECTORES = `SELECT SectorID AS id, Nombre AS nombre FROM Sectores WH
 const QUERY_OFICINAS = `SELECT OficinaID AS id, Nombre AS nombre FROM Oficinas WHERE Activo = 1 ORDER BY Nombre;`;
 const QUERY_PERSONAL = `SELECT PersonalID AS id, Nombre || ' ' || Apellido AS nombre FROM Personal WHERE Activo = 1 ORDER BY Nombre, Apellido;`;
 const QUERY_ESTADOS = `SELECT EstadoID AS id, Descripcion AS nombre FROM EstadosSolicitud ORDER BY EstadoID;`;
+const QUERY_AUTORIZACIONES = `
+  SELECT
+    a.AutorizacionID AS id,
+    a.SolicitudID AS solicitudId,
+    a.OficinaID AS oficinaId,
+    a.AutorizadorID AS autorizadorId,
+    a.FechaAutorizacion AS fecha,
+    COALESCE(a.HoraInicioAutorizada, '') AS inicio,
+    COALESCE(a.HoraFinAutorizada, '') AS fin,
+    COALESCE(a.Observaciones, '') AS observaciones,
+    a.EstadoID AS estadoId
+  FROM Autorizaciones a
+  ORDER BY a.FechaAutorizacion DESC, a.AutorizacionID DESC;
+`;
+const QUERY_ESTADOS_AUTORIZACION = `SELECT EstadoID AS id, Descripcion AS nombre FROM EstadosAutorizacion ORDER BY EstadoID;`;
 
 const todayIso = (): string => new Date().toISOString().slice(0, 10);
 const toNumber = (value: unknown): number | null => {
@@ -215,8 +296,11 @@ export class App implements OnInit {
   protected readonly oficinas = signal<LookupItem[]>(DEMO_OFICINAS);
   protected readonly personal = signal<LookupItem[]>(DEMO_PERSONAL);
   protected readonly estados = signal<LookupItem[]>(DEMO_ESTADOS);
+  protected readonly estadosAutorizacion = signal<LookupItem[]>(DEMO_ESTADOS_AUTORIZACION);
   protected readonly solicitudes = signal<SolicitudRecord[]>(DEMO_SOLICITUDES);
+  protected readonly autorizaciones = signal<AutorizacionRecord[]>(DEMO_AUTORIZACIONES);
   protected readonly selectedSolicitudId = signal<number | null>(DEMO_SOLICITUDES[0]?.id ?? null);
+  protected readonly selectedAutorizacionId = signal<number | null>(DEMO_AUTORIZACIONES[0]?.id ?? null);
 
   protected readonly filters = signal({
     estado: 'Todos',
@@ -225,6 +309,7 @@ export class App implements OnInit {
   });
 
   readonly form: FormGroup;
+  readonly authorizationForm: FormGroup;
 
   protected readonly solicitudRows = computed<SolicitudView[]>(() =>
     this.solicitudes().map((solicitud) => ({
@@ -273,6 +358,32 @@ export class App implements OnInit {
     return `Solicitud #${selected.id} · ${lookupName(this.sectores(), selected.sectorId)} · ${lookupName(this.estados(), selected.estadoId)}`;
   });
 
+  protected readonly autorizacionesRows = computed<AutorizacionView[]>(() =>
+    this.autorizaciones().map((autorizacion) => ({
+      ...autorizacion,
+      solicitud: `#${autorizacion.solicitudId} · ${this.solicitudes().find((item) => item.id === autorizacion.solicitudId)?.motivo ?? 'Sin solicitud'}`,
+      oficina: lookupName(this.oficinas(), autorizacion.oficinaId),
+      autorizador: lookupName(this.personal(), autorizacion.autorizadorId),
+      estado: lookupName(this.estadosAutorizacion(), autorizacion.estadoId),
+    }))
+  );
+
+  protected readonly filteredAutorizaciones = computed(() => {
+    const solicitudId = this.selectedSolicitudId();
+    return solicitudId === null
+      ? this.autorizacionesRows()
+      : this.autorizacionesRows().filter((item) => item.solicitudId === solicitudId);
+  });
+
+  protected readonly selectedAutorizacion = computed(() => {
+    const selectedId = this.selectedAutorizacionId();
+    return this.autorizaciones().find((item) => item.id === selectedId) ?? null;
+  });
+
+  protected readonly totalAutorizaciones = computed(() => this.autorizacionesRows().length);
+  protected readonly autorizacionesPendientes = computed(() => this.autorizacionesRows().filter((item) => item.estado === 'Pendiente').length);
+  protected readonly autorizacionesAprobadas = computed(() => this.autorizacionesRows().filter((item) => item.estado === 'Autorizada').length);
+
   constructor(
     private readonly database: DatabaseService,
     private readonly fb: FormBuilder,
@@ -289,6 +400,18 @@ export class App implements OnInit {
       estadoId: [null as number | null, Validators.required],
       observaciones: ['', [Validators.maxLength(500)]],
     }, { validators: [this.timeRangeValidator()] });
+
+    this.authorizationForm = this.fb.group({
+      id: [null as number | null],
+      solicitudId: [null as number | null, Validators.required],
+      oficinaId: [null as number | null, Validators.required],
+      autorizadorId: [null as number | null, Validators.required],
+      fecha: ['', Validators.required],
+      inicio: [''],
+      fin: [''],
+      observaciones: ['', [Validators.maxLength(500)]],
+      estadoId: [null as number | null, Validators.required],
+    }, { validators: [this.timeRangeValidator('inicio', 'fin')] });
   }
 
   async ngOnInit(): Promise<void> {
@@ -310,12 +433,62 @@ export class App implements OnInit {
   protected selectSolicitud(id: number): void {
     this.selectedSolicitudId.set(id);
     this.patchFormFromSelection(id);
+    this.syncAutorizacionSelection(id);
   }
 
   protected newSolicitud(): void {
     this.selectedSolicitudId.set(null);
     this.form.reset(buildDemoFormValue());
+    this.selectedAutorizacionId.set(null);
+    this.authorizationForm.reset({
+      id: null,
+      solicitudId: null,
+      oficinaId: null,
+      autorizadorId: this.personal()[0]?.id ?? null,
+      fecha: todayIso(),
+      inicio: '',
+      fin: '',
+      observaciones: '',
+      estadoId: this.estadosAutorizacion()[0]?.id ?? null,
+    });
     this.statusMessage.set('Nuevo registro listo para cargar');
+  }
+
+  protected selectAutorizacion(id: number): void {
+    this.selectedAutorizacionId.set(id);
+    const record = this.autorizaciones().find((item) => item.id === id);
+
+    if (!record) {
+      return;
+    }
+
+    this.authorizationForm.reset({
+      id: record.id,
+      solicitudId: record.solicitudId,
+      oficinaId: record.oficinaId,
+      autorizadorId: record.autorizadorId,
+      fecha: record.fecha,
+      inicio: record.inicio,
+      fin: record.fin,
+      observaciones: record.observaciones,
+      estadoId: record.estadoId,
+    });
+  }
+
+  protected newAutorizacion(): void {
+    this.selectedAutorizacionId.set(null);
+    this.authorizationForm.reset({
+      id: null,
+      solicitudId: this.selectedSolicitudId(),
+      oficinaId: this.selectedSolicitud()?.oficinaId ?? null,
+      autorizadorId: this.personal()[0]?.id ?? null,
+      fecha: todayIso(),
+      inicio: '',
+      fin: '',
+      observaciones: '',
+      estadoId: this.estadosAutorizacion()[0]?.id ?? null,
+    });
+    this.statusMessage.set('Nueva autorización lista para cargar');
   }
 
   protected async refresh(): Promise<void> {
@@ -366,6 +539,51 @@ export class App implements OnInit {
     this.syncSelectionAfterMutation();
   }
 
+  protected async saveAutorizacion(): Promise<void> {
+    if (this.authorizationForm.invalid) {
+      this.authorizationForm.markAllAsTouched();
+      this.statusMessage.set(this.authorizationFormMessage());
+      return;
+    }
+
+    const value = this.authorizationForm.getRawValue() as AutorizacionFormValue;
+    const record = this.authorizationFormValueToRecord(value);
+
+    if (record.id !== null && this.selectedAutorizacion()) {
+      await this.updateAutorizacion({ ...record, id: record.id });
+      return;
+    }
+
+    await this.createAutorizacion(record);
+  }
+
+  protected async deleteAutorizacion(): Promise<void> {
+    const selected = this.selectedAutorizacion();
+
+    if (!selected) {
+      this.statusMessage.set('Selecciona una autorización para eliminar');
+      return;
+    }
+
+    if (typeof window !== 'undefined' && !window.confirm(`Eliminar la autorización #${selected.id}?`)) {
+      return;
+    }
+
+    if (this.mode() === 'sqlite') {
+      const result = await this.database.executeNonQuery('DELETE FROM Autorizaciones WHERE AutorizacionID = ?', [selected.id]);
+
+      if (!result.success) {
+        this.statusMessage.set(result.error ?? 'No se pudo eliminar la autorización');
+        return;
+      }
+    }
+
+    this.autorizaciones.update((items) => items.filter((item) => item.id !== selected.id));
+    this.statusMessage.set(`Autorización #${selected.id} eliminada`);
+    this.selectedAutorizacionId.set(null);
+    this.newAutorizacion();
+  }
+
   protected statusClass(estado: string): string {
     return `status--${estado.toLowerCase()}`;
   }
@@ -401,6 +619,33 @@ export class App implements OnInit {
     return this.form.errors?.['invalidTimeRange'] ? 'La hora fin debe ser mayor que la hora inicio.' : '';
   }
 
+  protected hasAuthorizationFieldError(name: string): boolean {
+    const control = this.authorizationForm.get(name);
+    return !!control && control.touched && control.invalid;
+  }
+
+  protected authorizationFieldError(name: string): string {
+    const control = this.authorizationForm.get(name);
+
+    if (!control || !control.touched || !control.errors) {
+      return '';
+    }
+
+    if (control.errors['required']) {
+      return 'Este campo es obligatorio.';
+    }
+
+    if (control.errors['maxlength']) {
+      return 'Supera el máximo permitido.';
+    }
+
+    return 'Valor inválido.';
+  }
+
+  protected authorizationFormError(): string {
+    return this.authorizationForm.errors?.['invalidTimeRange'] ? 'La hora fin autorizada debe ser mayor que la hora inicio.' : '';
+  }
+
   private async reloadData(preferredId: number | null = this.selectedSolicitudId()): Promise<void> {
     this.isBusy.set(true);
     this.statusMessage.set('Cargando datos');
@@ -412,19 +657,22 @@ export class App implements OnInit {
     }
 
     this.selectDefaultRecord(preferredId);
+    this.syncAutorizacionSelection(this.selectedSolicitudId());
     this.isBusy.set(false);
   }
 
   private async loadFromDatabase(): Promise<boolean> {
-    const [sectores, oficinas, personal, estados, solicitudes] = await Promise.all([
+    const [sectores, oficinas, personal, estados, estadosAutorizacion, solicitudes, autorizaciones] = await Promise.all([
       this.database.executeQuery(QUERY_SECTORES),
       this.database.executeQuery(QUERY_OFICINAS),
       this.database.executeQuery(QUERY_PERSONAL),
       this.database.executeQuery(QUERY_ESTADOS),
+      this.database.executeQuery(QUERY_ESTADOS_AUTORIZACION),
       this.database.executeQuery(QUERY_SOLICITUDES),
+      this.database.executeQuery(QUERY_AUTORIZACIONES),
     ]);
 
-    if (![sectores, oficinas, personal, estados, solicitudes].every((result) => result.success && Array.isArray(result.data))) {
+    if (![sectores, oficinas, personal, estados, estadosAutorizacion, solicitudes, autorizaciones].every((result) => result.success && Array.isArray(result.data))) {
       return false;
     }
 
@@ -433,7 +681,9 @@ export class App implements OnInit {
     this.oficinas.set(this.mapLookup(oficinas.data ?? []));
     this.personal.set(this.mapLookup(personal.data ?? []));
     this.estados.set(this.mapLookup(estados.data ?? []));
+    this.estadosAutorizacion.set(this.mapLookup(estadosAutorizacion.data ?? []));
     this.solicitudes.set(this.mapSolicitudes(solicitudes.data ?? []));
+    this.autorizaciones.set(this.mapAutorizaciones(autorizaciones.data ?? []));
     this.statusMessage.set('Datos cargados desde SQLite');
 
     return true;
@@ -445,7 +695,9 @@ export class App implements OnInit {
     this.oficinas.set(DEMO_OFICINAS);
     this.personal.set(DEMO_PERSONAL);
     this.estados.set(DEMO_ESTADOS);
+    this.estadosAutorizacion.set(DEMO_ESTADOS_AUTORIZACION);
     this.solicitudes.set(DEMO_SOLICITUDES);
+    this.autorizaciones.set(DEMO_AUTORIZACIONES);
     this.statusMessage.set('Modo demo local activado');
   }
 
@@ -464,6 +716,41 @@ export class App implements OnInit {
 
     this.selectedSolicitudId.set(selected.id);
     this.patchFormFromRecord(selected);
+    this.syncAutorizacionSelection(selected.id);
+  }
+
+  private syncAutorizacionSelection(solicitudId: number | null): void {
+    const records = this.filteredAutorizaciones();
+
+    if (records.length === 0) {
+      this.selectedAutorizacionId.set(null);
+      this.authorizationForm.reset({
+        id: null,
+        solicitudId,
+        oficinaId: this.selectedSolicitud()?.oficinaId ?? null,
+        autorizadorId: this.personal()[0]?.id ?? null,
+        fecha: todayIso(),
+        inicio: '',
+        fin: '',
+        observaciones: '',
+        estadoId: this.estadosAutorizacion()[0]?.id ?? null,
+      });
+      return;
+    }
+
+    const selected = records[0];
+    this.selectedAutorizacionId.set(selected.id);
+    this.authorizationForm.reset({
+      id: selected.id,
+      solicitudId: selected.solicitudId,
+      oficinaId: selected.oficinaId,
+      autorizadorId: selected.autorizadorId,
+      fecha: selected.fecha,
+      inicio: selected.inicio,
+      fin: selected.fin,
+      observaciones: selected.observaciones,
+      estadoId: selected.estadoId,
+    });
   }
 
   private patchFormFromSelection(id: number): void {
@@ -506,10 +793,10 @@ export class App implements OnInit {
     };
   }
 
-  private timeRangeValidator(): ValidatorFn {
+  private timeRangeValidator(startField = 'inicio', endField = 'fin'): ValidatorFn {
     return (control: AbstractControl): ValidationErrors | null => {
-      const inicio = String(control.get('inicio')?.value ?? '');
-      const fin = String(control.get('fin')?.value ?? '');
+      const inicio = String(control.get(startField)?.value ?? '');
+      const fin = String(control.get(endField)?.value ?? '');
 
       if (!inicio || !fin) {
         return null;
@@ -532,6 +819,14 @@ export class App implements OnInit {
     }
 
     return 'Completa los campos obligatorios.';
+  }
+
+  protected authorizationFormMessage(): string {
+    if (this.authorizationForm.errors?.['invalidTimeRange']) {
+      return 'Revisa la hora autorizada.';
+    }
+
+    return 'Completa los campos obligatorios de la autorización.';
   }
 
   private async createSolicitud(record: SolicitudDraft): Promise<void> {
@@ -600,6 +895,94 @@ export class App implements OnInit {
     this.statusMessage.set(`Solicitud #${nextId} creada`);
   }
 
+  private authorizationFormValueToRecord(value: AutorizacionFormValue): AutorizacionDraft {
+    return {
+      id: value.id,
+      solicitudId: toNumber(value.solicitudId) ?? 0,
+      oficinaId: toNumber(value.oficinaId) ?? 0,
+      autorizadorId: toNumber(value.autorizadorId) ?? 0,
+      fecha: value.fecha,
+      inicio: normalizeTime(value.inicio),
+      fin: normalizeTime(value.fin),
+      observaciones: normalizeText(value.observaciones),
+      estadoId: toNumber(value.estadoId) ?? 0,
+    };
+  }
+
+  private async createAutorizacion(record: AutorizacionDraft): Promise<void> {
+    if (this.mode() === 'sqlite') {
+      const result = await this.database.executeNonQuery(
+        `
+          INSERT INTO Autorizaciones (
+            SolicitudID,
+            OficinaID,
+            AutorizadorID,
+            FechaAutorizacion,
+            HoraInicioAutorizada,
+            HoraFinAutorizada,
+            Observaciones,
+            EstadoID,
+            UsuarioCreadorID,
+            FechaCreacion,
+            UsuarioModificadorID,
+            FechaModificacion
+          ) VALUES (
+            @solicitudId,
+            @oficinaId,
+            @autorizadorId,
+            @fecha,
+            @inicio,
+            @fin,
+            @observaciones,
+            @estadoId,
+            @usuarioCreadorId,
+            CURRENT_TIMESTAMP,
+            NULL,
+            NULL
+          )
+        `,
+        {
+          solicitudId: record.solicitudId,
+          oficinaId: record.oficinaId,
+          autorizadorId: record.autorizadorId,
+          fecha: record.fecha,
+          inicio: record.inicio || null,
+          fin: record.fin || null,
+          observaciones: record.observaciones,
+          estadoId: record.estadoId,
+          usuarioCreadorId: CURRENT_USER_ID,
+        }
+      );
+
+      if (!result.success) {
+        this.statusMessage.set(result.error ?? 'No se pudo crear la autorización');
+        return;
+      }
+
+      await this.reloadData(record.solicitudId);
+      this.statusMessage.set('Autorización creada');
+      return;
+    }
+
+    const nextId = (this.autorizaciones().reduce((max, item) => Math.max(max, item.id), 0) || 2000) + 1;
+    const created: AutorizacionRecord = { ...record, id: nextId };
+
+    this.autorizaciones.update((items) => [created, ...items]);
+    this.selectedAutorizacionId.set(nextId);
+    this.authorizationForm.reset({
+      id: nextId,
+      solicitudId: created.solicitudId,
+      oficinaId: created.oficinaId,
+      autorizadorId: created.autorizadorId,
+      fecha: created.fecha,
+      inicio: created.inicio,
+      fin: created.fin,
+      observaciones: created.observaciones,
+      estadoId: created.estadoId,
+    });
+    this.statusMessage.set(`Autorización #${nextId} creada`);
+  }
+
   private async updateSolicitud(record: SolicitudRecord): Promise<void> {
     if (this.mode() === 'sqlite') {
       const result = await this.database.executeNonQuery(
@@ -649,6 +1032,53 @@ export class App implements OnInit {
     this.statusMessage.set(`Solicitud #${record.id} actualizada`);
   }
 
+  private async updateAutorizacion(record: AutorizacionRecord): Promise<void> {
+    if (this.mode() === 'sqlite') {
+      const result = await this.database.executeNonQuery(
+        `
+          UPDATE Autorizaciones
+          SET
+            SolicitudID = @solicitudId,
+            OficinaID = @oficinaId,
+            AutorizadorID = @autorizadorId,
+            FechaAutorizacion = @fecha,
+            HoraInicioAutorizada = @inicio,
+            HoraFinAutorizada = @fin,
+            Observaciones = @observaciones,
+            EstadoID = @estadoId,
+            UsuarioModificadorID = @usuarioModificadorId,
+            FechaModificacion = CURRENT_TIMESTAMP
+          WHERE AutorizacionID = @id
+        `,
+        {
+          id: record.id,
+          solicitudId: record.solicitudId,
+          oficinaId: record.oficinaId,
+          autorizadorId: record.autorizadorId,
+          fecha: record.fecha,
+          inicio: record.inicio || null,
+          fin: record.fin || null,
+          observaciones: record.observaciones,
+          estadoId: record.estadoId,
+          usuarioModificadorId: CURRENT_USER_ID,
+        }
+      );
+
+      if (!result.success) {
+        this.statusMessage.set(result.error ?? 'No se pudo actualizar la autorización');
+        return;
+      }
+
+      await this.reloadData(record.id);
+      this.statusMessage.set(`Autorización #${record.id} actualizada`);
+      return;
+    }
+
+    this.autorizaciones.update((items) => items.map((item) => (item.id === record.id ? record : item)));
+    this.selectedAutorizacionId.set(record.id);
+    this.statusMessage.set(`Autorización #${record.id} actualizada`);
+  }
+
   private syncSelectionAfterMutation(): void {
     const remaining = this.solicitudes();
 
@@ -679,6 +1109,20 @@ export class App implements OnInit {
       motivo: String(row.motivo ?? ''),
       estadoId: Number(row.estadoId),
       observaciones: String(row.observaciones ?? ''),
+    }));
+  }
+
+  private mapAutorizaciones(rows: any[]): AutorizacionRecord[] {
+    return rows.map((row) => ({
+      id: Number(row.id),
+      solicitudId: Number(row.solicitudId),
+      oficinaId: Number(row.oficinaId),
+      autorizadorId: Number(row.autorizadorId),
+      fecha: String(row.fecha ?? ''),
+      inicio: String(row.inicio ?? ''),
+      fin: String(row.fin ?? ''),
+      observaciones: String(row.observaciones ?? ''),
+      estadoId: Number(row.estadoId),
     }));
   }
 }

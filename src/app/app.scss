@@ -343,6 +343,18 @@ tbody tr.is-selected {
   border-color: rgba(248, 113, 113, 0.22);
 }
 
+.status--aprobada {
+  color: #34d399;
+  background: rgba(52, 211, 153, 0.12);
+  border-color: rgba(52, 211, 153, 0.22);
+}
+
+.status--rechazada {
+  color: #f87171;
+  background: rgba(248, 113, 113, 0.12);
+  border-color: rgba(248, 113, 113, 0.22);
+}
+
 .form-panel {
   display: grid;
   gap: 1rem;
@@ -375,6 +387,24 @@ tbody tr.is-selected {
   background: rgba(15, 23, 42, 0.72);
   border: 1px solid rgba(148, 163, 184, 0.14);
   color: #dbeafe;
+}
+
+.section-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  margin: 1.5rem 0 0.75rem;
+}
+
+.section-heading h3 {
+  margin: 0;
+  font-size: 1.2rem;
+}
+
+.section-heading p {
+  margin: 0;
+  color: #94a3b8;
 }
 
 @media (max-width: 1180px) {
