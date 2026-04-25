@@ -12,7 +12,19 @@
     "electron:dev": "concurrently \"npm:start\" \"npm:electron\""
   },
   "private": true,
-  "packageManager": "npm@11.12.1",
+  "packageManager": "pnpm@10.0.0",
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "@parcel/watcher",
+      "better-sqlite3",
+      "electron",
+      "electron-winstaller",
+      "esbuild",
+      "lmdb",
+      "msgpackr-extract",
+      "sqlite3"
+    ]
+  },
   "dependencies": {
     "@angular/common": "^21.2.0",
     "@angular/compiler": "^21.2.0",
