@@ -1,0 +1,90 @@
+<section class="admin-shell">
+  <header class="admin-header">
+    <div>
+      <p class="eyebrow">Administración</p>
+      <h1>Usuarios y roles</h1>
+      <p>Creación de usuarios y asignación de permisos.</p>
+    </div>
+
+    <button type="button" class="secondary" (click)="auth.logout()">Cerrar sesión</button>
+  </header>
+
+  <div class="admin-grid">
+    <article class="panel">
+      <h2>Nuevo usuario</h2>
+
+      <form class="stack" [formGroup]="createForm">
+        <label>
+          <span>Personal</span>
+          <select formControlName="personalId">
+            <option [ngValue]="null">Selecciona una persona</option>
+            <option *ngFor="let item of personal()" [ngValue]="item.id">{{ item.nombre }}</option>
+          </select>
+        </label>
+
+        <label>
+          <span>Usuario</span>
+          <input type="text" formControlName="username" />
+        </label>
+
+        <label>
+          <span>Contraseña</span>
+          <input type="password" formControlName="password" />
+        </label>
+
+        <div class="roles">
+          <span>Roles</span>
+          <label *ngFor="let role of roles()">
+            <input type="checkbox" [checked]="createRoleIds().includes(role.id)" (change)="toggleCreateRole(role.id, $any($event.target).checked)" />
+            <span>{{ role.name }}</span>
+          </label>
+        </div>
+
+        <button type="button" class="primary" (click)="createUser()">Crear usuario</button>
+      </form>
+    </article>
+
+    <article class="panel panel--wide">
+      <div class="panel-header">
+        <h2>Usuarios</h2>
+        <button type="button" class="secondary" (click)="reload()">Recargar</button>
+      </div>
+
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Usuario</th>
+              <th>Nombre</th>
+              <th>Roles</th>
+              <th>Activo</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr *ngFor="let user of users()" (click)="selectUser(user.userId)" [class.selected]="selectedUserId() === user.userId">
+              <td>{{ user.username }}</td>
+              <td>{{ user.fullName }}</td>
+              <td>{{ user.roles.join(', ') }}</td>
+              <td>{{ user.active ? 'Si' : 'No' }}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="editor" *ngIf="selectedUser() as user">
+        <h3>Editar roles de {{ user.username }}</h3>
+
+        <div class="roles">
+          <label *ngFor="let role of roles()">
+            <input type="checkbox" [checked]="selectedUserRoleIds().includes(role.id)" (change)="toggleSelectedRole(role.id, $any($event.target).checked)" />
+            <span>{{ role.name }}</span>
+          </label>
+        </div>
+
+        <button type="button" class="primary" (click)="saveRoles()">Guardar roles</button>
+      </div>
+    </article>
+  </div>
+
+  <p class="message" *ngIf="message()">{{ message() }}</p>
+</section>

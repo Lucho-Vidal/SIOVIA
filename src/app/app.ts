@@ -2,6 +2,7 @@ import { CommonModule } from '@angular/common';
 import { Component, computed, OnInit, signal } from '@angular/core';
 import { AbstractControl, FormBuilder, FormGroup, ReactiveFormsModule, ValidationErrors, ValidatorFn, Validators } from '@angular/forms';
 
+import { AuthService } from './core/auth/auth.service';
 import { DatabaseService } from './core/database/database.service';
 
 type EstadoSolicitud = 'Pendiente' | 'Autorizada' | 'Ejecutada' | 'Observada';
@@ -82,8 +83,6 @@ interface AutorizacionFormValue {
 interface AutorizacionDraft extends Omit<AutorizacionRecord, 'id'> {
   id: number | null;
 }
-
-const CURRENT_USER_ID = 1;
 
 const DEMO_SECTORES: LookupItem[] = [
   { id: 1, nombre: 'Vías y Obras' },
@@ -282,7 +281,7 @@ const buildDemoFormValue = (): SolicitudFormValue => ({
 });
 
 @Component({
-  selector: 'app-root',
+  selector: 'app-workspace',
   imports: [CommonModule, ReactiveFormsModule],
   templateUrl: './app.html',
   styleUrl: './app.scss'
@@ -291,6 +290,7 @@ export class App implements OnInit {
   protected readonly mode = signal<'demo' | 'sqlite'>('demo');
   protected readonly isBusy = signal(false);
   protected readonly statusMessage = signal('Listo para trabajar');
+  protected readonly currentSession = computed(() => this.auth.session());
 
   protected readonly sectores = signal<LookupItem[]>(DEMO_SECTORES);
   protected readonly oficinas = signal<LookupItem[]>(DEMO_OFICINAS);
@@ -311,6 +311,37 @@ export class App implements OnInit {
   readonly form: FormGroup;
   readonly authorizationForm: FormGroup;
 
+  protected readonly currentRole = computed(() => this.primaryRole(this.currentSession()?.roles ?? []));
+  protected readonly currentPersonalId = computed(() => this.currentSession()?.personalId ?? null);
+  protected readonly canManageSolicitudes = computed(() => {
+    const role = this.currentRole();
+    return role === 'administrador' || role === 'solicitante';
+  });
+  protected readonly canManageAutorizaciones = computed(() => {
+    const role = this.currentRole();
+    return role === 'administrador' || role === 'autorizador';
+  });
+  protected readonly visiblePersonal = computed(() => {
+    const role = this.currentRole();
+    if (role === 'solicitante' && this.currentPersonalId() !== null) {
+      return this.personal().filter((item) => item.id === this.currentPersonalId());
+    }
+
+    return this.personal();
+  });
+  protected readonly roleLabel = computed(() => {
+    switch (this.currentRole()) {
+      case 'administrador':
+        return 'Administrador con acceso total';
+      case 'autorizador':
+        return 'Autorizador con vista completa';
+      case 'operador':
+        return 'Operador con solicitudes autorizadas';
+      default:
+        return 'Solicitante con acceso a sus solicitudes';
+    }
+  });
+
   protected readonly solicitudRows = computed<SolicitudView[]>(() =>
     this.solicitudes().map((solicitud) => ({
       ...solicitud,
@@ -323,13 +354,19 @@ export class App implements OnInit {
 
   protected readonly filteredSolicitudes = computed(() => {
     const filters = this.filters();
+    const role = this.currentRole();
+    const currentPersonalId = this.currentPersonalId();
 
     return this.solicitudRows().filter((solicitud) => {
       const matchesEstado = filters.estado === 'Todos' || solicitud.estado === filters.estado;
       const matchesSector = filters.sector === 'Todos' || solicitud.sector === filters.sector;
       const matchesOficina = filters.oficina === 'Todas' || solicitud.oficina === filters.oficina;
+      const matchesRole = role === 'administrador'
+        || role === 'autorizador'
+        || (role === 'operador' && solicitud.estado === 'Autorizada')
+        || (role === 'solicitante' && currentPersonalId !== null && solicitud.solicitanteId === currentPersonalId);
 
-      return matchesEstado && matchesSector && matchesOficina;
+      return matchesEstado && matchesSector && matchesOficina && matchesRole;
     });
   });
 
@@ -369,10 +406,24 @@ export class App implements OnInit {
   );
 
   protected readonly filteredAutorizaciones = computed(() => {
+    const role = this.currentRole();
+    const currentPersonalId = this.currentPersonalId();
     const solicitudId = this.selectedSolicitudId();
-    return solicitudId === null
-      ? this.autorizacionesRows()
-      : this.autorizacionesRows().filter((item) => item.solicitudId === solicitudId);
+    const baseRows = this.autorizacionesRows().filter((item) => {
+      if (role === 'solicitante') {
+        const solicitud = this.solicitudes().find((record) => record.id === item.solicitudId);
+        return solicitud?.solicitanteId === currentPersonalId;
+      }
+
+      if (role === 'operador') {
+        const solicitud = this.solicitudes().find((record) => record.id === item.solicitudId);
+        return solicitud?.estadoId === 2;
+      }
+
+      return true;
+    });
+
+    return solicitudId === null ? baseRows : baseRows.filter((item) => item.solicitudId === solicitudId);
   });
 
   protected readonly selectedAutorizacion = computed(() => {
@@ -387,6 +438,7 @@ export class App implements OnInit {
   constructor(
     private readonly database: DatabaseService,
     private readonly fb: FormBuilder,
+    private readonly auth: AuthService,
   ) {
     this.form = this.fb.group({
       id: [null as number | null],
@@ -438,13 +490,17 @@ export class App implements OnInit {
 
   protected newSolicitud(): void {
     this.selectedSolicitudId.set(null);
-    this.form.reset(buildDemoFormValue());
+    const demoValue = buildDemoFormValue();
+    this.form.reset({
+      ...demoValue,
+      solicitanteId: this.currentPersonalId() ?? demoValue.solicitanteId,
+    });
     this.selectedAutorizacionId.set(null);
     this.authorizationForm.reset({
       id: null,
       solicitudId: null,
       oficinaId: null,
-      autorizadorId: this.personal()[0]?.id ?? null,
+      autorizadorId: this.visiblePersonal()[0]?.id ?? null,
       fecha: todayIso(),
       inicio: '',
       fin: '',
@@ -481,7 +537,7 @@ export class App implements OnInit {
       id: null,
       solicitudId: this.selectedSolicitudId(),
       oficinaId: this.selectedSolicitud()?.oficinaId ?? null,
-      autorizadorId: this.personal()[0]?.id ?? null,
+      autorizadorId: this.visiblePersonal()[0]?.id ?? null,
       fecha: todayIso(),
       inicio: '',
       fin: '',
@@ -495,7 +551,16 @@ export class App implements OnInit {
     await this.reloadData(this.selectedSolicitudId());
   }
 
+  protected logout(): void {
+    this.auth.logout();
+  }
+
   protected async saveSolicitud(): Promise<void> {
+    if (!this.canManageSolicitudes()) {
+      this.statusMessage.set('No tienes permiso para guardar solicitudes');
+      return;
+    }
+
     if (this.form.invalid) {
       this.form.markAllAsTouched();
       this.statusMessage.set(this.formMessage());
@@ -514,6 +579,11 @@ export class App implements OnInit {
   }
 
   protected async deleteSolicitud(): Promise<void> {
+    if (!this.canManageSolicitudes()) {
+      this.statusMessage.set('No tienes permiso para eliminar solicitudes');
+      return;
+    }
+
     const selected = this.selectedSolicitud();
 
     if (!selected) {
@@ -540,6 +610,11 @@ export class App implements OnInit {
   }
 
   protected async saveAutorizacion(): Promise<void> {
+    if (!this.canManageAutorizaciones()) {
+      this.statusMessage.set('No tienes permiso para guardar autorizaciones');
+      return;
+    }
+
     if (this.authorizationForm.invalid) {
       this.authorizationForm.markAllAsTouched();
       this.statusMessage.set(this.authorizationFormMessage());
@@ -558,6 +633,11 @@ export class App implements OnInit {
   }
 
   protected async deleteAutorizacion(): Promise<void> {
+    if (!this.canManageAutorizaciones()) {
+      this.statusMessage.set('No tienes permiso para eliminar autorizaciones');
+      return;
+    }
+
     const selected = this.selectedAutorizacion();
 
     if (!selected) {
@@ -658,6 +738,7 @@ export class App implements OnInit {
 
     this.selectDefaultRecord(preferredId);
     this.syncAutorizacionSelection(this.selectedSolicitudId());
+    this.updateFormAccess();
     this.isBusy.set(false);
   }
 
@@ -702,11 +783,16 @@ export class App implements OnInit {
   }
 
   private selectDefaultRecord(preferredId: number | null): void {
-    const records = this.solicitudes();
+    const records = this.filteredSolicitudes();
 
     if (records.length === 0) {
       this.selectedSolicitudId.set(null);
-      this.form.reset(buildDemoFormValue());
+      const demoValue = buildDemoFormValue();
+      this.form.reset({
+        ...demoValue,
+        solicitanteId: this.currentPersonalId() ?? demoValue.solicitanteId,
+      });
+      this.updateFormAccess();
       return;
     }
 
@@ -728,7 +814,7 @@ export class App implements OnInit {
         id: null,
         solicitudId,
         oficinaId: this.selectedSolicitud()?.oficinaId ?? null,
-        autorizadorId: this.personal()[0]?.id ?? null,
+        autorizadorId: this.visiblePersonal()[0]?.id ?? null,
         fecha: todayIso(),
         inicio: '',
         fin: '',
@@ -829,6 +915,44 @@ export class App implements OnInit {
     return 'Completa los campos obligatorios de la autorización.';
   }
 
+  private primaryRole(roles: string[]): 'administrador' | 'autorizador' | 'operador' | 'solicitante' {
+    if (roles.length === 0) {
+      return 'administrador';
+    }
+
+    if (roles.includes('administrador')) {
+      return 'administrador';
+    }
+
+    if (roles.includes('autorizador')) {
+      return 'autorizador';
+    }
+
+    if (roles.includes('operador')) {
+      return 'operador';
+    }
+
+    return 'solicitante';
+  }
+
+  private currentUserIdValue(): number {
+    return this.currentSession()?.userId ?? 1;
+  }
+
+  private updateFormAccess(): void {
+    if (this.canManageSolicitudes()) {
+      this.form.enable({ emitEvent: false });
+    } else {
+      this.form.disable({ emitEvent: false });
+    }
+
+    if (this.canManageAutorizaciones()) {
+      this.authorizationForm.enable({ emitEvent: false });
+    } else {
+      this.authorizationForm.disable({ emitEvent: false });
+    }
+  }
+
   private async createSolicitud(record: SolicitudDraft): Promise<void> {
     if (this.mode() === 'sqlite') {
       const result = await this.database.executeNonQuery(
@@ -873,7 +997,7 @@ export class App implements OnInit {
           motivo: record.motivo,
           estadoId: record.estadoId,
           observaciones: record.observaciones,
-          usuarioCreadorId: CURRENT_USER_ID,
+          usuarioCreadorId: this.currentUserIdValue(),
         }
       );
 
@@ -950,7 +1074,7 @@ export class App implements OnInit {
           fin: record.fin || null,
           observaciones: record.observaciones,
           estadoId: record.estadoId,
-          usuarioCreadorId: CURRENT_USER_ID,
+          usuarioCreadorId: this.currentUserIdValue(),
         }
       );
 
@@ -1013,7 +1137,7 @@ export class App implements OnInit {
           motivo: record.motivo,
           estadoId: record.estadoId,
           observaciones: record.observaciones,
-          usuarioModificadorId: CURRENT_USER_ID,
+          usuarioModificadorId: this.currentUserIdValue(),
         }
       );
 
@@ -1060,7 +1184,7 @@ export class App implements OnInit {
           fin: record.fin || null,
           observaciones: record.observaciones,
           estadoId: record.estadoId,
-          usuarioModificadorId: CURRENT_USER_ID,
+          usuarioModificadorId: this.currentUserIdValue(),
         }
       );
 

@@ -2,10 +2,25 @@ const { app, BrowserWindow, ipcMain } = require('electron');
 const path = require('path');
 const Database = require('better-sqlite3');
 const fs = require('fs');
+const bcrypt = require('bcrypt');
 
 let db = null;
 let databasePath = null;
 const SCHEMA_PATH = path.join(__dirname, 'database', 'schema.sql');
+const SALT_ROUNDS = 10;
+const DEFAULT_PASSWORDS = {
+  admin: 'Admin@123',
+  autorizador: 'Autorizador@123',
+  operador: 'Operador@123',
+  solicitante: 'Solicitante@123',
+};
+
+const ROLE_NAMES = {
+  admin: 'Administrador',
+  autorizador: 'Autorizador',
+  operador: 'Operador',
+  solicitante: 'Solicitante',
+};
 
 function bindParams(stmt, params) {
   if (Array.isArray(params)) {
@@ -29,6 +44,150 @@ function runParams(stmt, params) {
   }
 
   return stmt.run();
+}
+
+function hashPassword(password) {
+  return bcrypt.hashSync(String(password), SALT_ROUNDS);
+}
+
+function validatePasswordPolicy(password) {
+  return typeof password === 'string' && password.length >= 8 && /\d/.test(password) && /[^A-Za-z0-9]/.test(password);
+}
+
+function getRoleIdByName(roleName) {
+  const role = db.prepare('SELECT RolID AS id FROM Roles WHERE NombreRol = ?').get(roleName);
+  return role ? Number(role.id) : null;
+}
+
+function getRolesForUser(userId) {
+  return db.prepare(
+    `SELECT r.RolID AS id, r.NombreRol AS name
+     FROM UsuarioRoles ur
+     INNER JOIN Roles r ON r.RolID = ur.RolID
+     WHERE ur.UsuarioID = ?
+     ORDER BY r.RolID`
+  ).all(userId);
+}
+
+function getUserByUsername(username) {
+  return db.prepare(
+    `SELECT
+       u.UsuarioID AS userId,
+       u.PersonalID AS personalId,
+       u.NombreUsuario AS username,
+       u.PasswordHash AS passwordHash,
+       u.Activo AS active,
+       p.Nombre AS personalNombre,
+       p.Apellido AS personalApellido
+     FROM Usuarios u
+     INNER JOIN Personal p ON p.PersonalID = u.PersonalID
+     WHERE u.NombreUsuario = ?`
+  ).get(username);
+}
+
+function getUserById(userId) {
+  return db.prepare(
+    `SELECT
+       u.UsuarioID AS userId,
+       u.PersonalID AS personalId,
+       u.NombreUsuario AS username,
+       u.PasswordHash AS passwordHash,
+       u.Activo AS active,
+       p.Nombre AS personalNombre,
+       p.Apellido AS personalApellido
+     FROM Usuarios u
+     INNER JOIN Personal p ON p.PersonalID = u.PersonalID
+     WHERE u.UsuarioID = ?`
+  ).get(userId);
+}
+
+function countActiveAdmins(excludeUserId = null) {
+  const baseQuery =
+    `SELECT COUNT(DISTINCT u.UsuarioID) AS count
+     FROM Usuarios u
+     INNER JOIN UsuarioRoles ur ON ur.UsuarioID = u.UsuarioID
+     INNER JOIN Roles r ON r.RolID = ur.RolID
+     WHERE u.Activo = 1 AND r.NombreRol = ?`;
+
+  if (excludeUserId === null) {
+    return Number(db.prepare(baseQuery).get(ROLE_NAMES.admin).count ?? 0);
+  }
+
+  return Number(db.prepare(`${baseQuery} AND u.UsuarioID != ?`).get(ROLE_NAMES.admin, excludeUserId).count ?? 0);
+}
+
+function listRoles() {
+  return db.prepare('SELECT RolID AS id, NombreRol AS name FROM Roles ORDER BY RolID').all();
+}
+
+function listUsers() {
+  const rows = db.prepare(
+    `SELECT
+       u.UsuarioID AS userId,
+       u.PersonalID AS personalId,
+       u.NombreUsuario AS username,
+       u.Activo AS active,
+       p.Nombre AS personalNombre,
+       p.Apellido AS personalApellido,
+       r.RolID AS roleId,
+       r.NombreRol AS roleName
+     FROM Usuarios u
+     INNER JOIN Personal p ON p.PersonalID = u.PersonalID
+     LEFT JOIN UsuarioRoles ur ON ur.UsuarioID = u.UsuarioID
+     LEFT JOIN Roles r ON r.RolID = ur.RolID
+     ORDER BY u.UsuarioID, r.RolID`
+  ).all();
+
+  const users = new Map();
+
+  for (const row of rows) {
+    if (!users.has(row.userId)) {
+      users.set(row.userId, {
+        userId: Number(row.userId),
+        personalId: Number(row.personalId),
+        username: String(row.username ?? ''),
+        active: Boolean(row.active),
+        fullName: `${String(row.personalNombre ?? '')} ${String(row.personalApellido ?? '')}`.trim(),
+        roles: [],
+        roleIds: [],
+      });
+    }
+
+    if (row.roleId !== null && row.roleId !== undefined) {
+      const current = users.get(row.userId);
+      current.roles.push(String(row.roleName ?? ''));
+      current.roleIds.push(Number(row.roleId));
+    }
+  }
+
+  return Array.from(users.values());
+}
+
+function normalizeRoleNames(roleIds) {
+  const validRoleIds = Array.isArray(roleIds) ? roleIds.map((value) => Number(value)).filter(Number.isFinite) : [];
+  const roles = listRoles();
+  return validRoleIds
+    .map((roleId) => roles.find((role) => Number(role.id) === roleId))
+    .filter(Boolean)
+    .map((role) => String(role.name));
+}
+
+function areValidRoleIds(roleIds) {
+  const normalized = Array.isArray(roleIds) ? roleIds.map((value) => Number(value)).filter(Number.isFinite) : [];
+  const known = new Set(listRoles().map((role) => Number(role.id)));
+  return normalized.length > 0 && normalized.every((roleId) => known.has(roleId));
+}
+
+function ensureSeededPasswords() {
+  const update = db.prepare('UPDATE Usuarios SET PasswordHash = ? WHERE NombreUsuario = ?');
+
+  for (const [username, password] of Object.entries(DEFAULT_PASSWORDS)) {
+    const user = db.prepare('SELECT UsuarioID AS id, PasswordHash AS passwordHash FROM Usuarios WHERE NombreUsuario = ?').get(username);
+
+    if (user && !String(user.passwordHash ?? '').startsWith('$2')) {
+      update.run(hashPassword(password), username);
+    }
+  }
 }
 
 function seedDatabase() {
@@ -104,19 +263,36 @@ function seedDatabase() {
   ]);
 
   insertMany('INSERT OR IGNORE INTO Usuarios (UsuarioID, PersonalID, NombreUsuario, PasswordHash, Activo) VALUES (@UsuarioID, @PersonalID, @NombreUsuario, @PasswordHash, @Activo)', [
-    { UsuarioID: 1, PersonalID: 1, NombreUsuario: 'admin', PasswordHash: 'demo-hash', Activo: 1 },
-    { UsuarioID: 2, PersonalID: 2, NombreUsuario: 'operador', PasswordHash: 'demo-hash', Activo: 1 },
+    { UsuarioID: 1, PersonalID: 1, NombreUsuario: 'admin', PasswordHash: hashPassword(DEFAULT_PASSWORDS.admin), Activo: 1 },
+    { UsuarioID: 2, PersonalID: 2, NombreUsuario: 'operador', PasswordHash: hashPassword(DEFAULT_PASSWORDS.operador), Activo: 1 },
+    { UsuarioID: 3, PersonalID: 3, NombreUsuario: 'solicitante', PasswordHash: hashPassword(DEFAULT_PASSWORDS.solicitante), Activo: 1 },
+    { UsuarioID: 4, PersonalID: 4, NombreUsuario: 'autorizador', PasswordHash: hashPassword(DEFAULT_PASSWORDS.autorizador), Activo: 1 },
   ]);
 
   insertMany('INSERT OR IGNORE INTO Roles (RolID, NombreRol) VALUES (@RolID, @NombreRol)', [
-    { RolID: 1, NombreRol: 'Administrador' },
-    { RolID: 2, NombreRol: 'Operador' },
+    { RolID: 1, NombreRol: ROLE_NAMES.admin },
+    { RolID: 2, NombreRol: ROLE_NAMES.operador },
+    { RolID: 3, NombreRol: ROLE_NAMES.solicitante },
+    { RolID: 4, NombreRol: ROLE_NAMES.autorizador },
   ]);
 
   insertMany('INSERT OR IGNORE INTO UsuarioRoles (UsuarioID, RolID) VALUES (@UsuarioID, @RolID)', [
     { UsuarioID: 1, RolID: 1 },
     { UsuarioID: 2, RolID: 2 },
+    { UsuarioID: 3, RolID: 3 },
+    { UsuarioID: 4, RolID: 4 },
   ]);
+
+  const demoPasswords = {
+    1: DEFAULT_PASSWORDS.admin,
+    2: DEFAULT_PASSWORDS.operador,
+    3: DEFAULT_PASSWORDS.solicitante,
+    4: DEFAULT_PASSWORDS.autorizador,
+  };
+
+  for (const [userId, password] of Object.entries(demoPasswords)) {
+    db.prepare('UPDATE Usuarios SET PasswordHash = ? WHERE UsuarioID = ?').run(hashPassword(password), Number(userId));
+  }
 
   insertMany('INSERT OR IGNORE INTO Solicitudes (SolicitudID, SectorID, OficinaID, SolicitanteID, FechaSolicitud, HoraInicioPrevista, HoraFinPrevista, Motivo, Observaciones, EstadoID, UsuarioCreadorID) VALUES (@SolicitudID, @SectorID, @OficinaID, @SolicitanteID, @FechaSolicitud, @HoraInicioPrevista, @HoraFinPrevista, @Motivo, @Observaciones, @EstadoID, @UsuarioCreadorID)', [
     {
@@ -200,19 +376,11 @@ function seedDatabase() {
     },
   ]);
 
+  ensureSeededPasswords();
   console.log('Demo data seeded into SQLite');
 }
 
-function ensureSolicitanteAccess() {
-  db.exec(`
-    INSERT OR IGNORE INTO Roles (RolID, NombreRol) VALUES (3, 'Solicitante');
-    INSERT OR IGNORE INTO Usuarios (UsuarioID, PersonalID, NombreUsuario, PasswordHash, Activo)
-      VALUES (3, 4, 'solicitante', 'demo-hash', 1);
-    INSERT OR IGNORE INTO UsuarioRoles (UsuarioID, RolID) VALUES (3, 3);
-  `);
-}
-
-function initializeDatabase() {
+/* function initializeDatabase() {
   databasePath = path.join(app.getPath('userData'), 'database.sqlite');
   db = new Database(databasePath);
   db.pragma('foreign_keys = ON');
@@ -231,10 +399,26 @@ function initializeDatabase() {
     console.log('Existing database found at', databasePath);
   }
 
-  ensureSolicitanteAccess();
   seedDatabase();
-}
+  ensureSeededPasswords();
+} */
+function createWindow() {
+  const win = new BrowserWindow({
+    width: 1200,
+    height: 800,
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+    }
+  });
 
+  // FORZAR desarrollo por ahora
+  win.loadURL('http://localhost:4200');
+
+  // Abrir consola
+  win.webContents.openDevTools();
+}
 function createWindow() {
   const win = new BrowserWindow({
     width: 1200,
@@ -300,6 +484,149 @@ ipcMain.handle('db-executeNonQuery', (event, args) => {
     const stmt = db.prepare(sql);
     const info = runParams(stmt, params);
     return { success: true, changes: info.changes, lastInsertRowid: info.lastInsertRowid };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle('auth-get-state', () => {
+  try {
+    const hasUsers = Number(db.prepare('SELECT COUNT(*) AS count FROM Usuarios').get().count ?? 0) > 0;
+    const adminCount = countActiveAdmins();
+    return { success: true, data: { hasUsers, adminCount } };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle('auth-login', (event, args) => {
+  try {
+    const username = String(args?.username ?? '').trim();
+    const password = String(args?.password ?? '');
+
+    if (!username || !password) {
+      return { success: false, error: 'Credenciales inválidas' };
+    }
+
+    const user = getUserByUsername(username);
+
+    if (!user || !user.active) {
+      return { success: false, error: 'Credenciales inválidas' };
+    }
+
+    if (!bcrypt.compareSync(password, String(user.passwordHash ?? ''))) {
+      return { success: false, error: 'Credenciales inválidas' };
+    }
+
+    const roles = getRolesForUser(user.userId).map((role) => String(role.name ?? '').toLowerCase());
+
+    return {
+      success: true,
+      data: {
+        userId: Number(user.userId),
+        personalId: Number(user.personalId),
+        username: String(user.username ?? ''),
+        fullName: `${String(user.personalNombre ?? '')} ${String(user.personalApellido ?? '')}`.trim(),
+        roles,
+      },
+    };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle('auth-list-roles', () => {
+  try {
+    return { success: true, data: listRoles() };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle('auth-list-users', () => {
+  try {
+    return { success: true, data: listUsers() };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle('auth-create-user', (event, args) => {
+  try {
+    const personalId = Number(args?.personalId);
+    const username = String(args?.username ?? '').trim();
+    const password = String(args?.password ?? '');
+    const roleIds = Array.isArray(args?.roleIds) ? args.roleIds.map((value) => Number(value)).filter(Number.isFinite) : [];
+
+    if (!Number.isFinite(personalId) || !username || !validatePasswordPolicy(password) || !areValidRoleIds(roleIds)) {
+      return { success: false, error: 'Datos inválidos para crear el usuario' };
+    }
+
+    const personal = db.prepare('SELECT PersonalID AS id FROM Personal WHERE PersonalID = ?').get(personalId);
+
+    if (!personal) {
+      return { success: false, error: 'El personal seleccionado no existe' };
+    }
+
+    const existing = db.prepare('SELECT UsuarioID AS id FROM Usuarios WHERE NombreUsuario = ?').get(username);
+
+    if (existing) {
+      return { success: false, error: 'El nombre de usuario ya existe' };
+    }
+
+    const insertUser = db.prepare('INSERT INTO Usuarios (PersonalID, NombreUsuario, PasswordHash, Activo) VALUES (?, ?, ?, 1)');
+    const insertRole = db.prepare('INSERT INTO UsuarioRoles (UsuarioID, RolID) VALUES (?, ?)');
+    const passwordHash = hashPassword(password);
+
+    const transaction = db.transaction(() => {
+      const result = insertUser.run(personalId, username, passwordHash);
+      for (const roleId of roleIds) {
+        insertRole.run(result.lastInsertRowid, roleId);
+      }
+      return result.lastInsertRowid;
+    });
+
+    const userId = transaction();
+    return { success: true, data: { userId } };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle('auth-update-user-roles', (event, args) => {
+  try {
+    const userId = Number(args?.userId);
+    const roleIds = Array.isArray(args?.roleIds) ? args.roleIds.map((value) => Number(value)).filter(Number.isFinite) : [];
+
+    if (!Number.isFinite(userId) || !areValidRoleIds(roleIds)) {
+      return { success: false, error: 'Datos inválidos para actualizar roles' };
+    }
+
+    const user = getUserById(userId);
+
+    if (!user) {
+      return { success: false, error: 'El usuario no existe' };
+    }
+
+    const currentRoles = getRolesForUser(userId).map((role) => String(role.name ?? '').toLowerCase());
+    const nextRoles = normalizeRoleNames(roleIds).map((role) => String(role).toLowerCase());
+
+    if (currentRoles.includes('administrador') && !nextRoles.includes('administrador') && countActiveAdmins(userId) <= 0) {
+      return { success: false, error: 'Debe existir al menos un administrador activo' };
+    }
+
+    const deleteRoles = db.prepare('DELETE FROM UsuarioRoles WHERE UsuarioID = ?');
+    const insertRole = db.prepare('INSERT INTO UsuarioRoles (UsuarioID, RolID) VALUES (?, ?)');
+
+    const transaction = db.transaction(() => {
+      deleteRoles.run(userId);
+      for (const roleId of roleIds) {
+        insertRole.run(userId, roleId);
+      }
+    });
+
+    transaction();
+    return { success: true };
   } catch (error) {
     return { success: false, error: error.message };
   }

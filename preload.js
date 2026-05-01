@@ -12,5 +12,23 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
   executeNonQuery: (sql, params) => {
     return ipcRenderer.invoke('db-executeNonQuery', { sql, params });
+  },
+  authGetState: () => {
+    return ipcRenderer.invoke('auth-get-state');
+  },
+  authLogin: (payload) => {
+    return ipcRenderer.invoke('auth-login', payload);
+  },
+  authListRoles: () => {
+    return ipcRenderer.invoke('auth-list-roles');
+  },
+  authListUsers: () => {
+    return ipcRenderer.invoke('auth-list-users');
+  },
+  authCreateUser: (payload) => {
+    return ipcRenderer.invoke('auth-create-user', payload);
+  },
+  authUpdateUserRoles: (payload) => {
+    return ipcRenderer.invoke('auth-update-user-roles', payload);
   }
 });

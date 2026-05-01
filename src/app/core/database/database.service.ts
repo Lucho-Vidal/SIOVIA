@@ -13,13 +13,6 @@ export interface NonQueryResult {
   error?: string;
 }
 
-declare const window: Window & typeof globalThis & {
-  electronAPI: {
-    executeQuery: (sql: string, params?: any) => Promise<any>;
-    executeNonQuery: (sql: string, params?: any) => Promise<any>;
-  };
-};
-
 @Injectable({
   providedIn: 'root'
 })

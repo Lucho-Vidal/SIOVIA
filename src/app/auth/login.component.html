@@ -1,0 +1,25 @@
+<section class="login-shell">
+  <div class="login-card">
+    <p class="eyebrow">Acceso al sistema</p>
+    <h1>Operaciones Ferroviarias</h1>
+    <p class="lead">Inicia sesión para entrar al flujo de solicitudes, autorizaciones y ejecuciones.</p>
+
+    <form class="login-form" [formGroup]="form" (ngSubmit)="submit()">
+      <label>
+        <span>Usuario</span>
+        <input type="text" formControlName="username" autocomplete="username" />
+      </label>
+
+      <label>
+        <span>Contraseña</span>
+        <input type="password" formControlName="password" autocomplete="current-password" />
+      </label>
+
+      <button type="submit" [disabled]="loading()">{{ loading() ? 'Ingresando...' : 'Ingresar' }}</button>
+    </form>
+
+    <p class="message" *ngIf="message()">{{ message() }}</p>
+
+    <p class="hint">Usuarios demo: `admin`, `autorizador`, `operador`, `solicitante`.</p>
+  </div>
+</section>

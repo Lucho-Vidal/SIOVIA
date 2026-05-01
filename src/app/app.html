@@ -12,12 +12,13 @@
       <button type="button" class="nav__item">Ejecuciones</button>
       <button type="button" class="nav__item">Novedades</button>
       <button type="button" class="nav__item">Catálogos</button>
-      <button type="button" class="nav__item">Seguridad</button>
+      <button type="button" class="nav__item" *ngIf="currentRole() === 'administrador'">Seguridad</button>
     </nav>
 
     <div class="sidebar__foot">
       <span>{{ modeLabel() }}</span>
-      <strong>Rol solicitante con acceso a Solicitudes</strong>
+      <strong>{{ roleLabel() }}</strong>
+      <button type="button" class="secondary-action" (click)="logout()">Cerrar sesión</button>
     </div>
   </aside>
 
@@ -32,7 +33,7 @@
       <div class="header-actions">
         <div class="status-pill">{{ modeLabel() }}</div>
         <button type="button" class="secondary-action" (click)="refresh()">Recargar</button>
-        <button type="button" class="primary-action" (click)="newSolicitud()">Nueva solicitud</button>
+        <button type="button" class="primary-action" (click)="newSolicitud()" *ngIf="canManageSolicitudes()">Nueva solicitud</button>
       </div>
     </header>
 
@@ -159,7 +160,7 @@
             <span>Solicitante *</span>
             <select formControlName="solicitanteId">
               <option [ngValue]="null">Seleccione una persona</option>
-              <option *ngFor="let item of personal()" [ngValue]="item.id">{{ item.nombre }}</option>
+              <option *ngFor="let item of visiblePersonal()" [ngValue]="item.id">{{ item.nombre }}</option>
             </select>
             <small class="field-error" *ngIf="hasFieldError('solicitanteId')">{{ fieldError('solicitanteId') }}</small>
           </label>
@@ -205,8 +206,8 @@
 
         <div class="form-actions">
           <button type="button" class="secondary-action" (click)="newSolicitud()">Limpiar</button>
-          <button type="button" class="danger-action" (click)="deleteSolicitud()" [disabled]="!selectedSolicitud()">Eliminar</button>
-          <button type="button" class="primary-action" [disabled]="form.invalid || isBusy()" (click)="saveSolicitud()">Guardar</button>
+          <button type="button" class="danger-action" (click)="deleteSolicitud()" [disabled]="!selectedSolicitud()" *ngIf="canManageSolicitudes()">Eliminar</button>
+          <button type="button" class="primary-action" [disabled]="form.invalid || isBusy()" (click)="saveSolicitud()" *ngIf="canManageSolicitudes()">Guardar</button>
         </div>
 
         <p class="message" *ngIf="statusMessage()">{{ statusMessage() }}</p>
@@ -290,7 +291,7 @@
             <span>Autorizador *</span>
             <select formControlName="autorizadorId">
               <option [ngValue]="null">Seleccione una persona</option>
-              <option *ngFor="let item of personal()" [ngValue]="item.id">{{ item.nombre }}</option>
+              <option *ngFor="let item of visiblePersonal()" [ngValue]="item.id">{{ item.nombre }}</option>
             </select>
             <small class="field-error" *ngIf="hasAuthorizationFieldError('autorizadorId')">{{ authorizationFieldError('autorizadorId') }}</small>
           </label>
@@ -330,8 +331,8 @@
 
         <div class="form-actions">
           <button type="button" class="secondary-action" (click)="newAutorizacion()">Limpiar</button>
-          <button type="button" class="danger-action" (click)="deleteAutorizacion()" [disabled]="!selectedAutorizacion()">Eliminar</button>
-          <button type="button" class="primary-action" [disabled]="authorizationForm.invalid || isBusy()" (click)="saveAutorizacion()">Guardar</button>
+          <button type="button" class="danger-action" (click)="deleteAutorizacion()" [disabled]="!selectedAutorizacion()" *ngIf="canManageAutorizaciones()">Eliminar</button>
+          <button type="button" class="primary-action" [disabled]="authorizationForm.invalid || isBusy()" (click)="saveAutorizacion()" *ngIf="canManageAutorizaciones()">Guardar</button>
         </div>
 
         <p class="message" *ngIf="authorizationFormMessage() && authorizationForm.invalid && authorizationForm.touched">{{ authorizationFormMessage() }}</p>
