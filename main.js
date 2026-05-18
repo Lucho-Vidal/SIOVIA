@@ -3,6 +3,7 @@ const path = require('path');
 const Database = require('better-sqlite3');
 const fs = require('fs');
 const bcrypt = require('bcrypt');
+const http = require('http');
 
 let db = null;
 let databasePath = null;
@@ -380,7 +381,7 @@ function seedDatabase() {
   console.log('Demo data seeded into SQLite');
 }
 
-/* function initializeDatabase() {
+function initializeDatabase() {
   databasePath = path.join(app.getPath('userData'), 'database.sqlite');
   db = new Database(databasePath);
   db.pragma('foreign_keys = ON');
@@ -401,24 +402,38 @@ function seedDatabase() {
 
   seedDatabase();
   ensureSeededPasswords();
-} */
-function createWindow() {
-  const win = new BrowserWindow({
-    width: 1200,
-    height: 800,
-    webPreferences: {
-      preload: path.join(__dirname, 'preload.js'),
-      contextIsolation: true,
-      nodeIntegration: false,
-    }
-  });
-
-  // FORZAR desarrollo por ahora
-  win.loadURL('http://localhost:4200');
-
-  // Abrir consola
-  win.webContents.openDevTools();
 }
+
+function waitForDevServer(url, maxRetries = 30, delay = 1000) {
+  return new Promise((resolve, reject) => {
+    let retries = 0;
+
+    const check = () => {
+      http.get(url, (res) => {
+        if (res.statusCode >= 200 && res.statusCode < 400) {
+          console.log('Dev server is ready');
+          resolve();
+        } else {
+          retry();
+        }
+      }).on('error', () => {
+        retry();
+      });
+    };
+
+    const retry = () => {
+      retries++;
+      if (retries >= maxRetries) {
+        reject(new Error(`Dev server at ${url} not ready after ${maxRetries} retries`));
+      } else {
+        setTimeout(check, delay);
+      }
+    };
+
+    check();
+  });
+}
+
 function createWindow() {
   const win = new BrowserWindow({
     width: 1200,
@@ -430,24 +445,22 @@ function createWindow() {
     }
   });
 
-  // Load Angular app
-  if (process.env.NODE_ENV === 'development') {
-    win.loadURL('http://localhost:4200');
-  } else {
-    win.loadFile(path.join(__dirname, 'dist/railway-operations/browser/index.html'));
-  }
+  const devUrl = 'http://localhost:4200';
+  win.webContents.on('did-fail-load', (_event, code, desc) => {
+    console.warn(`Failed to load: ${desc}, retrying...`);
+    setTimeout(() => win.loadURL(devUrl), 2000);
+  });
 
-  // Open DevTools in development
-  if (process.env.NODE_ENV === 'development') {
-    win.webContents.openDevTools();
-  }
+  win.loadURL(devUrl);
+  win.webContents.openDevTools();
 }
 
 // This method will be called when Electron has finished
 // initialization and is ready to create browser windows.
 // Some APIs can only be used after this event occurs.
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
   initializeDatabase();
+  await waitForDevServer('http://localhost:4200').catch((err) => console.warn(err.message));
   createWindow();
 
   app.on('activate', () => {
