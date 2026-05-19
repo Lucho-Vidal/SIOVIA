@@ -1,5 +1,5 @@
 import { Routes } from '@angular/router';
-import { App } from './app';
+import { WorkspaceComponent } from './workspace/workspace.component';
 import { AdminUsersComponent } from './admin/admin-users.component';
 import { LoginComponent } from './auth/login.component';
 import { authGuard } from './core/auth/auth.guard';
@@ -17,25 +17,25 @@ export const routes: Routes = [
   },
   {
     path: 'solicitante/solicitudes',
-    component: App,
+    component: WorkspaceComponent,
     canActivate: [authGuard, roleGuard],
     data: { roles: ['solicitante'] },
   },
   {
     path: 'autorizador/solicitudes',
-    component: App,
+    component: WorkspaceComponent,
     canActivate: [authGuard, roleGuard],
     data: { roles: ['autorizador'] },
   },
   {
     path: 'operador/solicitudes-autorizadas',
-    component: App,
+    component: WorkspaceComponent,
     canActivate: [authGuard, roleGuard],
     data: { roles: ['operador'] },
   },
   {
     path: 'admin/solicitudes',
-    component: App,
+    component: WorkspaceComponent,
     canActivate: [authGuard, roleGuard],
     data: { roles: ['administrador'] },
   },

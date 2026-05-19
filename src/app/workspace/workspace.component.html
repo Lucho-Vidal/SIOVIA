@@ -1,0 +1,342 @@
+<div class="app-shell">
+  <aside class="sidebar">
+    <div class="brand">
+      <span class="brand__eyebrow">Sistema operativo</span>
+      <h1>Operaciones Ferroviarias</h1>
+      <p>Flujo de solicitudes, autorizaciones y ejecuciones</p>
+    </div>
+
+    <nav class="nav" aria-label="Navegación principal">
+      <button type="button" class="nav__item nav__item--active">Solicitudes</button>
+      <button type="button" class="nav__item">Autorizaciones</button>
+      <button type="button" class="nav__item">Ejecuciones</button>
+      <button type="button" class="nav__item">Novedades</button>
+      <button type="button" class="nav__item">Catálogos</button>
+      <button type="button" class="nav__item" *ngIf="currentRole() === 'administrador'">Seguridad</button>
+    </nav>
+
+    <div class="sidebar__foot">
+      <span>{{ modeLabel() }}</span>
+      <strong>{{ roleLabel() }}</strong>
+      <button type="button" class="secondary-action" (click)="logout()">Cerrar sesión</button>
+    </div>
+  </aside>
+
+  <main class="workspace">
+    <header class="workspace__header">
+      <div>
+        <p class="eyebrow">Centro de control</p>
+        <h2>Solicitudes</h2>
+        <p class="muted">Seguimiento de la cadena operativa desde el ingreso hasta la ejecución.</p>
+      </div>
+
+      <div class="header-actions">
+        <div class="status-pill">{{ modeLabel() }}</div>
+        <button type="button" class="secondary-action" (click)="refresh()">Recargar</button>
+        <button type="button" class="primary-action" (click)="newSolicitud()" *ngIf="canManageSolicitudes()">Nueva solicitud</button>
+      </div>
+    </header>
+
+    <section class="kpis" aria-label="Indicadores principales">
+      <article class="kpi-card">
+        <span>Total</span>
+        <strong>{{ totalSolicitudes() }}</strong>
+        <small>registros cargados</small>
+      </article>
+
+      <article class="kpi-card">
+        <span>Pendientes</span>
+        <strong>{{ pendientes() }}</strong>
+        <small>en espera de acción</small>
+      </article>
+
+      <article class="kpi-card">
+        <span>Autorizadas</span>
+        <strong>{{ autorizadas() }}</strong>
+        <small>listas para ejecución</small>
+      </article>
+
+      <article class="kpi-card">
+        <span>Ejecutadas</span>
+        <strong>{{ ejecutadas() }}</strong>
+        <small>cerradas o finalizadas</small>
+      </article>
+    </section>
+
+    <section class="filters" aria-label="Filtros de solicitudes">
+      <label>
+        <span>Estado</span>
+        <select [value]="filters().estado" (change)="setEstado($any($event.target).value)">
+          <option *ngFor="let option of estadoOptions()" [value]="option">{{ option }}</option>
+        </select>
+      </label>
+
+      <label>
+        <span>Sector</span>
+        <select [value]="filters().sector" (change)="setSector($any($event.target).value)">
+          <option *ngFor="let option of sectorOptions()" [value]="option">{{ option }}</option>
+        </select>
+      </label>
+
+      <label>
+        <span>Oficina</span>
+        <select [value]="filters().oficina" (change)="setOficina($any($event.target).value)">
+          <option *ngFor="let option of oficinaOptions()" [value]="option">{{ option }}</option>
+        </select>
+      </label>
+    </section>
+
+    <section class="content-grid">
+      <article class="panel table-panel">
+        <div class="panel__header">
+          <div>
+            <h3>Cola de trabajo</h3>
+            <p>{{ filteredSolicitudes().length }} solicitudes visibles</p>
+          </div>
+          <span class="panel__badge">SQLite / Demo</span>
+        </div>
+
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>Fecha</th>
+                <th>Sector</th>
+                <th>Oficina</th>
+                <th>Solicitante</th>
+                <th>Estado</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr
+                *ngFor="let solicitud of filteredSolicitudes()"
+                (click)="selectSolicitud(solicitud.id)"
+                [class.is-selected]="selectedSolicitudId() === solicitud.id"
+              >
+                <td>#{{ solicitud.id }}</td>
+                <td>{{ solicitud.fecha }}</td>
+                <td>{{ solicitud.sector }}</td>
+                <td>{{ solicitud.oficina }}</td>
+                <td>{{ solicitud.solicitante }}</td>
+                <td>
+                  <span class="status" [ngClass]="statusClass(solicitud.estado)">{{ solicitud.estado }}</span>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </article>
+
+      <article class="panel form-panel">
+        <div class="panel__header">
+          <div>
+            <h3>{{ selectedLabel() }}</h3>
+            <p>Alta, edición y eliminación</p>
+          </div>
+          <span class="panel__badge">{{ modeLabel() }}</span>
+        </div>
+
+        <form class="form-grid" [formGroup]="form" (ngSubmit)="saveSolicitud()">
+          <label class="field">
+            <span>Sector *</span>
+            <select formControlName="sectorId">
+              <option [ngValue]="null">Seleccione un sector</option>
+              <option *ngFor="let item of sectores()" [ngValue]="item.id">{{ item.nombre }}</option>
+            </select>
+            <small class="field-error" *ngIf="hasFieldError('sectorId')">{{ fieldError('sectorId') }}</small>
+          </label>
+
+          <label class="field">
+            <span>Oficina *</span>
+            <select formControlName="oficinaId">
+              <option [ngValue]="null">Seleccione una oficina</option>
+              <option *ngFor="let item of oficinas()" [ngValue]="item.id">{{ item.nombre }}</option>
+            </select>
+            <small class="field-error" *ngIf="hasFieldError('oficinaId')">{{ fieldError('oficinaId') }}</small>
+          </label>
+
+          <label class="field">
+            <span>Solicitante *</span>
+            <select formControlName="solicitanteId">
+              <option [ngValue]="null">Seleccione una persona</option>
+              <option *ngFor="let item of visiblePersonal()" [ngValue]="item.id">{{ item.nombre }}</option>
+            </select>
+            <small class="field-error" *ngIf="hasFieldError('solicitanteId')">{{ fieldError('solicitanteId') }}</small>
+          </label>
+
+          <label class="field">
+            <span>Estado *</span>
+            <select formControlName="estadoId">
+              <option [ngValue]="null">Seleccione un estado</option>
+              <option *ngFor="let item of estados()" [ngValue]="item.id">{{ item.nombre }}</option>
+            </select>
+            <small class="field-error" *ngIf="hasFieldError('estadoId')">{{ fieldError('estadoId') }}</small>
+          </label>
+
+          <label class="field">
+            <span>Fecha *</span>
+            <input type="date" formControlName="fecha" />
+            <small class="field-error" *ngIf="hasFieldError('fecha')">{{ fieldError('fecha') }}</small>
+          </label>
+
+          <label class="field">
+            <span>Hora inicio</span>
+            <input type="time" formControlName="inicio" />
+          </label>
+
+          <label class="field">
+            <span>Hora fin</span>
+            <input type="time" formControlName="fin" />
+            <small class="field-error" *ngIf="formError()">{{ formError() }}</small>
+          </label>
+
+          <label class="field field--full">
+            <span>Motivo *</span>
+            <input type="text" formControlName="motivo" placeholder="Motivo de la solicitud" />
+            <small class="field-error" *ngIf="hasFieldError('motivo')">{{ fieldError('motivo') }}</small>
+          </label>
+
+          <label class="field field--full">
+            <span>Observaciones</span>
+            <textarea rows="4" formControlName="observaciones" placeholder="Notas adicionales"></textarea>
+            <small class="field-error" *ngIf="hasFieldError('observaciones')">{{ fieldError('observaciones') }}</small>
+          </label>
+        </form>
+
+        <div class="form-actions">
+          <button type="button" class="secondary-action" (click)="newSolicitud()">Limpiar</button>
+          <button type="button" class="danger-action" (click)="deleteSolicitud()" [disabled]="!selectedSolicitud()" *ngIf="canManageSolicitudes()">Eliminar</button>
+          <button type="button" class="primary-action" [disabled]="form.invalid || isBusy()" (click)="saveSolicitud()" *ngIf="canManageSolicitudes()">Guardar</button>
+        </div>
+
+        <p class="message" *ngIf="statusMessage()">{{ statusMessage() }}</p>
+      </article>
+    </section>
+
+    <section class="section-heading">
+      <h3>Autorizaciones</h3>
+      <p>Se muestran ligadas a la solicitud activa.</p>
+    </section>
+
+    <section class="content-grid">
+      <article class="panel table-panel">
+        <div class="panel__header">
+          <div>
+            <h3>Historial de autorizaciones</h3>
+            <p>{{ filteredAutorizaciones().length }} autorizaciones visibles</p>
+          </div>
+          <span class="panel__badge">Flujo vinculado</span>
+        </div>
+
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>Solicitud</th>
+                <th>Oficina</th>
+                <th>Autorizador</th>
+                <th>Fecha</th>
+                <th>Estado</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr
+                *ngFor="let autorizacion of filteredAutorizaciones()"
+                (click)="selectAutorizacion(autorizacion.id)"
+                [class.is-selected]="selectedAutorizacionId() === autorizacion.id"
+              >
+                <td>#{{ autorizacion.id }}</td>
+                <td>{{ autorizacion.solicitud }}</td>
+                <td>{{ autorizacion.oficina }}</td>
+                <td>{{ autorizacion.autorizador }}</td>
+                <td>{{ autorizacion.fecha }}</td>
+                <td><span class="status" [ngClass]="statusClass(autorizacion.estado)">{{ autorizacion.estado }}</span></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </article>
+
+      <article class="panel form-panel">
+        <div class="panel__header">
+          <div>
+            <h3>{{ selectedAutorizacion() ? 'Editar autorización' : 'Nueva autorización' }}</h3>
+            <p>Alta, edición y eliminación</p>
+          </div>
+          <span class="panel__badge">{{ totalAutorizaciones() }} total</span>
+        </div>
+
+        <form class="form-grid" [formGroup]="authorizationForm">
+          <label class="field">
+            <span>Solicitud *</span>
+            <select formControlName="solicitudId">
+              <option [ngValue]="null">Seleccione una solicitud</option>
+              <option *ngFor="let item of solicitudes()" [ngValue]="item.id">#{{ item.id }} · {{ item.motivo }}</option>
+            </select>
+            <small class="field-error" *ngIf="hasAuthorizationFieldError('solicitudId')">{{ authorizationFieldError('solicitudId') }}</small>
+          </label>
+
+          <label class="field">
+            <span>Oficina *</span>
+            <select formControlName="oficinaId">
+              <option [ngValue]="null">Seleccione una oficina</option>
+              <option *ngFor="let item of oficinas()" [ngValue]="item.id">{{ item.nombre }}</option>
+            </select>
+            <small class="field-error" *ngIf="hasAuthorizationFieldError('oficinaId')">{{ authorizationFieldError('oficinaId') }}</small>
+          </label>
+
+          <label class="field">
+            <span>Autorizador *</span>
+            <select formControlName="autorizadorId">
+              <option [ngValue]="null">Seleccione una persona</option>
+              <option *ngFor="let item of visiblePersonal()" [ngValue]="item.id">{{ item.nombre }}</option>
+            </select>
+            <small class="field-error" *ngIf="hasAuthorizationFieldError('autorizadorId')">{{ authorizationFieldError('autorizadorId') }}</small>
+          </label>
+
+          <label class="field">
+            <span>Estado *</span>
+            <select formControlName="estadoId">
+              <option [ngValue]="null">Seleccione un estado</option>
+              <option *ngFor="let item of estadosAutorizacion()" [ngValue]="item.id">{{ item.nombre }}</option>
+            </select>
+            <small class="field-error" *ngIf="hasAuthorizationFieldError('estadoId')">{{ authorizationFieldError('estadoId') }}</small>
+          </label>
+
+          <label class="field">
+            <span>Fecha *</span>
+            <input type="date" formControlName="fecha" />
+            <small class="field-error" *ngIf="hasAuthorizationFieldError('fecha')">{{ authorizationFieldError('fecha') }}</small>
+          </label>
+
+          <label class="field">
+            <span>Hora inicio</span>
+            <input type="time" formControlName="inicio" />
+          </label>
+
+          <label class="field">
+            <span>Hora fin</span>
+            <input type="time" formControlName="fin" />
+            <small class="field-error" *ngIf="authorizationFormError()">{{ authorizationFormError() }}</small>
+          </label>
+
+          <label class="field field--full">
+            <span>Observaciones</span>
+            <textarea rows="4" formControlName="observaciones" placeholder="Notas de la autorización"></textarea>
+            <small class="field-error" *ngIf="hasAuthorizationFieldError('observaciones')">{{ authorizationFieldError('observaciones') }}</small>
+          </label>
+        </form>
+
+        <div class="form-actions">
+          <button type="button" class="secondary-action" (click)="newAutorizacion()">Limpiar</button>
+          <button type="button" class="danger-action" (click)="deleteAutorizacion()" [disabled]="!selectedAutorizacion()" *ngIf="canManageAutorizaciones()">Eliminar</button>
+          <button type="button" class="primary-action" [disabled]="authorizationForm.invalid || isBusy()" (click)="saveAutorizacion()" *ngIf="canManageAutorizaciones()">Guardar</button>
+        </div>
+
+        <p class="message" *ngIf="authorizationFormMessage() && authorizationForm.invalid && authorizationForm.touched">{{ authorizationFormMessage() }}</p>
+      </article>
+    </section>
+  </main>
+</div>
