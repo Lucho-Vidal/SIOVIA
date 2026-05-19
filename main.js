@@ -1,9 +1,13 @@
-const { app, BrowserWindow, ipcMain } = require('electron');
-const path = require('path');
-const Database = require('better-sqlite3');
-const fs = require('fs');
-const bcrypt = require('bcrypt');
-const http = require('http');
+import { app, BrowserWindow, ipcMain } from 'electron';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import Database from 'better-sqlite3';
+import fs from 'fs';
+import bcrypt from 'bcrypt';
+import http from 'http';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 let db = null;
 let databasePath = null;
@@ -381,8 +385,43 @@ function seedDatabase() {
   console.log('Demo data seeded into SQLite');
 }
 
+function loadDatabaseConfig() {
+  const appDataDir = app.getPath('userData');
+  const sioviaConfigDir = path.join(app.getPath('appData'), 'SIOVIA', 'railway-operations');
+  const configPaths = [
+    path.join(sioviaConfigDir, 'database-config.json'),
+    path.join(appDataDir, 'database-config.json'),
+  ];
+  
+  for (const configPath of configPaths) {
+    try {
+      if (fs.existsSync(configPath)) {
+        const configContent = fs.readFileSync(configPath, 'utf8');
+        const config = JSON.parse(configContent);
+        
+        if (config.databasePath && typeof config.databasePath === 'string') {
+          const resolvedPath = path.resolve(config.databasePath);
+          console.log(`Base de datos configurada en: ${resolvedPath}`);
+          return resolvedPath;
+        }
+      }
+    } catch (error) {
+      console.warn(`Error al cargar configuración desde ${configPath}: ${error.message}`);
+    }
+  }
+  
+  return null;
+}
+
 function initializeDatabase() {
-  databasePath = path.join(app.getPath('userData'), 'database.sqlite');
+  const configuredPath = loadDatabaseConfig();
+  
+  if (configuredPath) {
+    databasePath = configuredPath;
+  } else {
+    databasePath = path.join(app.getPath('userData'), 'database.sqlite');
+  }
+  
   db = new Database(databasePath);
   db.pragma('foreign_keys = ON');
 

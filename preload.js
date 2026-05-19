@@ -2,7 +2,7 @@
 // However, we expose only a minimal API to the renderer for security.
 // We use contextBridge to expose safe APIs.
 
-const { contextBridge, ipcRenderer } = require('electron');
+import { contextBridge, ipcRenderer } from 'electron';
 
 // Expose protected methods that allow the renderer to send and receive IPC messages
 contextBridge.exposeInMainWorld('electronAPI', {
